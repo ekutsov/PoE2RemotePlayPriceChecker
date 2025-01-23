@@ -1,4 +1,3 @@
-psutil
-pyobjc
-PyQt5
-ImageGrab
+psutil~=6.1.1
+PyQt5~=5.15.11
+pyobjc-framework-Quartz~=11.0
