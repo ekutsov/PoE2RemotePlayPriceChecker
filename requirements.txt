@@ -1,3 +1,4 @@
 psutil
 pyobjc
 PyQt5
+ImageGrab

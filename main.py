@@ -1,20 +1,21 @@
 import sys
 import psutil
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
-from PyQt5.QtCore import Qt, QTimer, QPoint
-from PyQt5.QtGui import QColor, QPalette
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QWidget
+from PyQt5.QtCore import Qt, QTimer, QPoint, QRect
+from PyQt5.QtGui import QColor, QPalette, QPainter, QPen
 import Quartz.CoreGraphics as CG
+
 
 class MainWindow(QMainWindow):
     def __init__(self, target_process_name):
         super().__init__()
         self.target_process_name = target_process_name
         self.setWindowTitle("Оверлей для процесса")
-        self.setGeometry(100, 100, 200, 50)
+        self.setGeometry(100, 100, 300, 100)
 
-        self.is_dragging = False  # Флаг, указывающий, перетаскивается ли окно
-        self.saved_x = None  # Для сохранения позиции по X
-        self.saved_y = None  # Для сохранения позиции по Y
+        self.is_selecting = False
+        self.selection_start = None
+        self.selection_end = None
 
         if self.is_process_running():
             self.create_overlay()
@@ -23,7 +24,9 @@ class MainWindow(QMainWindow):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_overlay_position)
-        self.timer.start(1000)  # 1 секунда
+        self.timer.start(1000)
+
+        self.start_global_key_listener()
 
     def is_process_running(self):
         """Проверка, запущен ли процесс с данным именем."""
@@ -58,14 +61,8 @@ class MainWindow(QMainWindow):
                 overlay_width = self.width()
                 overlay_height = self.height()
 
-                # Если координаты сохранены, используем их
-                if self.saved_x is not None:
-                    new_x = self.saved_x
-                else:
-                    # Центрируем оверлей по горизонтали
-                    new_x = x + width // 2 - overlay_width // 2
-
-                new_y = y  # Оверлей будет на верхней границе окна
+                new_x = x + width // 2 - overlay_width // 2
+                new_y = y
 
                 self.move(int(new_x), int(new_y))
 
@@ -82,32 +79,113 @@ class MainWindow(QMainWindow):
             print(f"Ошибка: {e}")
         return None
 
+    def start_global_key_listener(self):
+        """Запуск глобального слушателя клавиш."""
+        def global_key_event_callback(proxy, event_type, event, refcon):
+            """Обработка глобальных нажатий клавиш."""
+            if event_type == CG.kCGEventKeyDown:
+                key_code = CG.CGEventGetIntegerValueField(event, CG.kCGKeyboardEventKeycode)
+                is_ctrl_pressed = CG.CGEventGetFlags(event) & CG.kCGEventFlagMaskControl
+
+                # Ctrl + E
+                if key_code == 14:  # Код клавиши 'E'
+                    print("Нажата комбинация Ctrl + E")
+                    self.start_selection()
+            return event
+
+        event_mask = (1 << CG.kCGEventKeyDown) | (1 << CG.kCGEventKeyUp)
+
+        # Создаем глобальный обработчик событий
+        self.event_tap = CG.CGEventTapCreate(
+            CG.kCGSessionEventTap,
+            CG.kCGHeadInsertEventTap,
+            CG.kCGEventTapOptionDefault,
+            event_mask,
+            global_key_event_callback,
+            None,
+        )
+
+        if not self.event_tap:
+            print("Не удалось создать обработчик событий. Проверьте разрешения.")
+            sys.exit(1)
+
+        # Включаем обработчик событий
+        CG.CGEventTapEnable(self.event_tap, True)
+
+        # Запускаем цикл событий
+        run_loop_source = CG.CFMachPortCreateRunLoopSource(None, self.event_tap, 0)
+        CG.CFRunLoopAddSource(CG.CFRunLoopGetCurrent(), run_loop_source, CG.kCFRunLoopDefaultMode)
+
+        # Проверяем статус обработчика каждые 2 секунды
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.check_event_tap_status)
+        self.timer.start(2000)
+
+        print("Глобальный обработчик клавиш запущен.")
+
+    def check_event_tap_status(self):
+        """Проверяем, активен ли обработчик событий."""
+        if not CG.CGEventTapIsEnabled(self.event_tap):
+            print("Обработчик событий отключен. Перезапускаем...")
+            CG.CGEventTapEnable(self.event_tap, True)
+
+    def start_selection(self):
+        """Активируем режим выделения области для скриншота."""
+        self.is_selecting = True
+        self.selection_start = None
+        self.selection_end = None
+        self.overlay_widget = QWidget(self)
+        self.overlay_widget.setGeometry(0, 0, self.width(), self.height())
+        self.overlay_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.5);")
+        self.overlay_widget.show()
+
     def mousePressEvent(self, event):
-        """Начало перетаскивания оверлея."""
-        if event.button() == Qt.LeftButton:
-            self.is_dragging = True
-            self.drag_position = event.globalPos() - self.pos()
+        """Начало выделения области для скриншота."""
+        if event.button() == Qt.LeftButton and self.is_selecting:
+            self.selection_start = event.pos()
 
     def mouseMoveEvent(self, event):
-        """Перетаскивание оверлея по горизонтали."""
-        if self.is_dragging:
-            new_x = event.globalPos().x() - self.drag_position.x()
-            new_y = self.pos().y()  # Не изменяем координату Y
-            self.move(new_x, new_y)
+        """Обновление выделенной области для скриншота."""
+        if self.is_selecting and self.selection_start:
+            self.selection_end = event.pos()
+            self.update_selection_rectangle()
 
     def mouseReleaseEvent(self, event):
-        """Окончание перетаскивания оверлея."""
-        if event.button() == Qt.LeftButton:
-            self.is_dragging = False
-            # Сохраняем позицию после перетаскивания
-            self.saved_x = self.pos().x()
-            self.saved_y = self.pos().y()
+        """Завершение выделения области и создание скриншота."""
+        if event.button() == Qt.LeftButton and self.is_selecting:
+            self.is_selecting = False
+            self.take_screenshot()
+            self.overlay_widget.close()
+
+    def update_selection_rectangle(self):
+        """Обновляем прямоугольник выделенной области."""
+        self.update()
+
+    def paintEvent(self, event):
+        """Отображаем выделенную область для скриншота."""
+        if self.is_selecting and self.selection_start and self.selection_end:
+            painter = QPainter(self)
+            painter.setPen(QPen(Qt.green, 2, Qt.DashLine))
+            rect = QRect(self.selection_start, self.selection_end)
+            painter.drawRect(rect)
+
+    def take_screenshot(self):
+        """Создание скриншота выделенной области."""
+        if self.selection_start and self.selection_end:
+            rect = QRect(self.selection_start, self.selection_end)
+            print(f"Скриншот области: {rect}")
+            screen = QApplication.primaryScreen()
+            screenshot = screen.grabWindow(self.winId(), rect.x(), rect.y(), rect.width(), rect.height())
+            screenshot.save("screenshot.png")
+            print("Скриншот сохранен как screenshot.png")
+
 
 def main():
     target_process_name = "RemotePlay"  # Имя процесса
     app = QApplication(sys.argv)
     window = MainWindow(target_process_name)
     sys.exit(app.exec_())
+
 
 if __name__ == "__main__":
     main()
