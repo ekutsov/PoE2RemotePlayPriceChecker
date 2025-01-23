@@ -12,6 +12,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Оверлей для процесса")
         self.setGeometry(100, 100, 200, 50)
 
+        self.is_dragging = False  # Флаг, указывающий, перетаскивается ли окно
+        self.saved_x = None  # Для сохранения позиции по X
+        self.saved_y = None  # Для сохранения позиции по Y
+
         if self.is_process_running():
             self.create_overlay()
         else:
@@ -54,8 +58,13 @@ class MainWindow(QMainWindow):
                 overlay_width = self.width()
                 overlay_height = self.height()
 
-                # Центрируем оверлей по горизонтали
-                new_x = x + width // 2 - overlay_width // 2
+                # Если координаты сохранены, используем их
+                if self.saved_x is not None:
+                    new_x = self.saved_x
+                else:
+                    # Центрируем оверлей по горизонтали
+                    new_x = x + width // 2 - overlay_width // 2
+
                 new_y = y  # Оверлей будет на верхней границе окна
 
                 self.move(int(new_x), int(new_y))
@@ -72,6 +81,27 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Ошибка: {e}")
         return None
+
+    def mousePressEvent(self, event):
+        """Начало перетаскивания оверлея."""
+        if event.button() == Qt.LeftButton:
+            self.is_dragging = True
+            self.drag_position = event.globalPos() - self.pos()
+
+    def mouseMoveEvent(self, event):
+        """Перетаскивание оверлея по горизонтали."""
+        if self.is_dragging:
+            new_x = event.globalPos().x() - self.drag_position.x()
+            new_y = self.pos().y()  # Не изменяем координату Y
+            self.move(new_x, new_y)
+
+    def mouseReleaseEvent(self, event):
+        """Окончание перетаскивания оверлея."""
+        if event.button() == Qt.LeftButton:
+            self.is_dragging = False
+            # Сохраняем позицию после перетаскивания
+            self.saved_x = self.pos().x()
+            self.saved_y = self.pos().y()
 
 def main():
     target_process_name = "RemotePlay"  # Имя процесса
