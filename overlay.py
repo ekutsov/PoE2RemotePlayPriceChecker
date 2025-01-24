@@ -101,10 +101,33 @@ class Overlay(QMainWindow):
         if event.button() == Qt.LeftButton and self.is_selecting:
             if self.selection_start and self.selection_end:
                 self.is_selecting = False
-                rect = QRect(self.selection_start, self.selection_end)
+                # Получаем координаты для выделения
+                x1, y1 = self.selection_start.x(), self.selection_start.y()
+                x2, y2 = self.selection_end.x(), self.selection_end.y()
+
+                # Корректируем координаты, чтобы область всегда была положительной
+                left = min(x1, x2)
+                top = min(y1, y2)
+                right = max(x1, x2)
+                bottom = max(y1, y2)
+
+                # Учитываем смещение по высоте верхнего бара
+                top += 68  # Смещаем верхнюю границу на 68 пикселей
+                bottom += 68  # То же для нижней границы
+
+                # Создаем прямоугольник с корректными координатами
+                rect = QRect(left, top, right - left, bottom - top)
+
+                # Печатаем координаты области для отладки
+                print(f"Selected area: {rect}")
+
                 # Убедимся, что область выделения корректно передана в метод
                 if rect.width() > 0 and rect.height() > 0:
+                    # Делаем скриншот
                     self.screenshot_handler.take_screenshot(rect)
+                else:
+                    print("Invalid selection area, skipping screenshot.")
+
                 self.overlay_widget.close()
 
     def update_selection_rectangle(self):
@@ -118,7 +141,7 @@ class Overlay(QMainWindow):
         self.selection_end = None
         self.overlay_widget = QWidget(self)
         self.overlay_widget.setGeometry(0, 0, self.width(), self.height())
-        self.overlay_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.5);")  # Темнее
+        self.overlay_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.1);")  # Темнее
         self.overlay_widget.show()
 
     def reset_selection(self):
@@ -132,7 +155,7 @@ class Overlay(QMainWindow):
         """Отображаем выделенную область для скриншота."""
         if self.is_selecting and self.selection_start and self.selection_end:
             painter = QPainter(self)
-            painter.setPen(QPen(Qt.green, 2, Qt.DashLine))
+            painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
             rect = QRect(self.selection_start, self.selection_end)
             painter.drawRect(rect)
 
