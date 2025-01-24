@@ -5,7 +5,8 @@ import Quartz.CoreGraphics as CG
 from screenshot import ScreenshotHandler
 from key_listener import KeyListener
 from process import ProcessHandler
-
+from text_parser import TextParser
+import os
 
 class Overlay(QMainWindow):
     def __init__(self, target_process_name):
@@ -13,11 +14,16 @@ class Overlay(QMainWindow):
         self.target_process_name = target_process_name
         self.process_handler = ProcessHandler(target_process_name)
         self.key_listener = KeyListener(14, CG.kCGEventFlagMaskControl, self.start_selection)
-        self.screenshot_handler = ScreenshotHandler(self)
+        self.screenshot_handler = ScreenshotHandler(self)  # Передаем self как окно
         self.is_selecting = False
         self.selection_start = None
         self.selection_end = None
         self.overlay_widget = None
+
+        # Создаем экземпляр TextParser
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data"))
+        config_path = os.path.join(base_dir, "itemTypes.json")
+        self.text_parser = TextParser(config_path)
 
         self.setWindowTitle("Оверлей для процесса")
         self.setGeometry(100, 100, 300, 100)
@@ -94,45 +100,43 @@ class Overlay(QMainWindow):
         """Обновление выделенной области для скриншота."""
         if self.is_selecting and self.selection_start:
             self.selection_end = event.pos()
-            self.update_selection_rectangle()
+            self.update()
 
     def mouseReleaseEvent(self, event):
         """Завершение выделения области и создание скриншота."""
         if event.button() == Qt.LeftButton and self.is_selecting:
             if self.selection_start and self.selection_end:
                 self.is_selecting = False
-                # Получаем координаты для выделения
                 x1, y1 = self.selection_start.x(), self.selection_start.y()
                 x2, y2 = self.selection_end.x(), self.selection_end.y()
 
-                # Корректируем координаты, чтобы область всегда была положительной
                 left = min(x1, x2)
                 top = min(y1, y2)
                 right = max(x1, x2)
                 bottom = max(y1, y2)
 
-                # Учитываем смещение по высоте верхнего бара
-                top += 68  # Смещаем верхнюю границу на 68 пикселей
-                bottom += 68  # То же для нижней границы
+                top += 68  # Смещение для верхнего бара
+                bottom += 68
 
-                # Создаем прямоугольник с корректными координатами
                 rect = QRect(left, top, right - left, bottom - top)
 
-                # Печатаем координаты области для отладки
-                print(f"Selected area: {rect}")
-
-                # Убедимся, что область выделения корректно передана в метод
                 if rect.width() > 0 and rect.height() > 0:
-                    # Делаем скриншот
-                    self.screenshot_handler.take_screenshot(rect)
+                    # Делаем скриншот и получаем изображение
+                    processed_image = self.screenshot_handler.take_screenshot(rect)
+
+                    # Извлекаем текст из изображения
+                    extracted_text = self.text_parser.extract_text(processed_image)
+
+                    # Парсим текст и выводим результаты
+                    parsed_results = self.text_parser.parse_text(extracted_text)
+                    print(f"Parsed results: {parsed_results}")
+
+                    # Показываем извлеченный текст во всплывающем окне
+                    self.text_parser.show_text_popup(extracted_text)
                 else:
                     print("Invalid selection area, skipping screenshot.")
 
                 self.overlay_widget.close()
-
-    def update_selection_rectangle(self):
-        """Обновляем прямоугольник выделенной области."""
-        self.update()
 
     def start_selection(self):
         """Активируем режим выделения области для скриншота."""
@@ -143,13 +147,6 @@ class Overlay(QMainWindow):
         self.overlay_widget.setGeometry(0, 0, self.width(), self.height())
         self.overlay_widget.setStyleSheet("background-color: rgba(0, 0, 0, 0.1);")  # Темнее
         self.overlay_widget.show()
-
-    def reset_selection(self):
-        """Возвращаем оверлей в исходное состояние."""
-        self.is_selecting = False
-        if self.overlay_widget:
-            self.overlay_widget.close()
-        self.create_overlay()
 
     def paintEvent(self, event):
         """Отображаем выделенную область для скриншота."""
@@ -162,4 +159,8 @@ class Overlay(QMainWindow):
     def keyPressEvent(self, event):
         """Закрытие оверлея при нажатии клавиши Escape."""
         if event.key() == Qt.Key_Escape:
-            self.reset_selection()
+            """Возвращаем оверлей в исходное состояние."""
+            self.is_selecting = False
+            if self.overlay_widget:
+                self.overlay_widget.close()
+            self.create_overlay()
