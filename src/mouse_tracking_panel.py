@@ -1,4 +1,5 @@
 import objc
+import pytesseract
 from AppKit import (
     NSPanel,
     NSColor,
@@ -20,94 +21,73 @@ from logger_config import logger
 
 class MouseTrackingPanel(NSPanel):
     """
-    Класс-панель для отслеживания событий мыши, рисования прямоугольника выделения
-    и вызова ScreenshotHandler.
+    Панель, позволяющая «рисовать» выделенную область мышью
+    (mouseDown/Dragged/Up) и, при отпускании, делать скриншот
+    выбранного региона (через ScreenshotHandler).
+    Поддерживает fullscreen-пространство (NSWindowCollectionBehaviorFullScreenAuxiliary).
     """
-
-    def __init__(self):
-        """
-        Обратите внимание, что при использовании `@classmethod create_panel`
-        и `alloc().init...` обычно инициализируются поля там.
-        Если вы переопределяете __init__, нужно звать super().__init__().
-        Но чаще всю инициализацию делают в create_panel.
-        """
-        # super().__init__()
-        self._endPoint = None
-        self._startPoint = None
-        self._dragging = None
 
     @classmethod
     def create_panel(cls, rect, screenshot_handler=None, overlay=None):
         """
-        Создаёт и возвращает готовую к использованию панель MouseTrackingPanel.
+        Создаёт и инициализирует MouseTrackingPanel в указанных координатах.
 
-        :param rect: Кортеж ((x, y), (width, height)) - глобальные координаты окна на экране.
-        :param screenshot_handler: Ссылка на ScreenshotHandler (чтобы вызвать save_screenshot).
-        :param overlay: Ссылка на Overlay, чтобы при завершении скриншота вызвать finish_selection().
+        :param rect: Кортеж ((x, y), (width, height)), глобальные координаты на экране.
+        :param screenshot_handler: Экземпляр ScreenshotHandler для сохранения скриншота.
+        :param overlay: Ссылка на Overlay, чтобы закрыть панель вызовом overlay.finish_selection().
+        :return: Экземпляр MouseTrackingPanel.
         """
         (global_x, global_y), (w, h) = rect
 
         panel = cls.alloc().initWithContentRect_styleMask_backing_defer_(
             ((global_x, global_y), (w, h)),
             NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel,
-            2,  # backing store (NSBackingStoreBuffered)
+            2,  # NSBackingStoreBuffered
             False
         )
 
         panel.setLevel_(NSStatusWindowLevel)
         panel.setCollectionBehavior_(NSWindowCollectionBehaviorFullScreenAuxiliary)
-
-        # Разрешаем приём событий мыши
         panel.setIgnoresMouseEvents_(False)
         panel.setAcceptsMouseMovedEvents_(True)
-
-        # Настраиваем внешний вид (полупрозрачная панель)
-        # panel.setBackgroundColor_(
-        #     NSColor.colorWithRed_green_blue_alpha_(0x48 / 255.0, 0x7E / 255.0, 0xAA / 255.0, 1)
-        # )
         panel.setAlphaValue_(0.1)
 
-        # -- Включаем слой для contentView (для рисования рамки выделения) --
+        # Включаем слой для contentView
         content_view = panel.contentView()
         content_view.setWantsLayer_(True)
 
+        # Создаём CAShapeLayer для визуализации выделенной области
         selection_layer = CAShapeLayer.layer()
-        # Полупрозрачная заливка
-        selection_layer.setFillColor_(
-            NSColor.colorWithCalibratedRed_green_blue_alpha_(0.2, 0.6, 1.0, 0.3).CGColor()
-        )
-        # Белая обводка
+        # selection_layer.setFillColor_(NSColor.colorWithCalibratedRed_green_blue_alpha_(0.2, 0.6, 1.0, 0.3).CGColor())
         selection_layer.setStrokeColor_(NSColor.greenColor().CGColor())
         selection_layer.setLineWidth_(2.0)
         content_view.layer().addSublayer_(selection_layer)
 
-        # -- Сохраняем нужные данные в атрибутах --
+        # Инициализация внутренних полей
         panel._selectionLayer = selection_layer
         panel._startPoint = (0, 0)
         panel._endPoint = (0, 0)
         panel._dragging = False
-
-        # Координаты окна в глобальных координатах (для перевода выделения)
         panel._windowOrigin = (global_x, global_y)
-
-        # Ссылка на ScreenshotHandler
         panel._screenshot_handler = screenshot_handler
-
-        # Ссылка на Overlay
         panel._overlay = overlay
 
         return panel
 
     @staticmethod
     def canBecomeKeyWindow() -> bool:
+        """Разрешаем панели становиться «ключевым» окном."""
         return True
 
     @staticmethod
     def canBecomeMainWindow() -> bool:
+        """Разрешаем панели становиться «основным» окном."""
         return True
 
     def mouseDown_(self, event):
-        """Начало выделения."""
+        """
+        Начало выделения: запоминаем точку нажатия.
+        """
         self._dragging = True
         self._startPoint = event.locationInWindow()
         self._endPoint = self._startPoint
@@ -116,7 +96,9 @@ class MouseTrackingPanel(NSPanel):
         objc.super(MouseTrackingPanel, self).mouseDown_(event)
 
     def mouseDragged_(self, event):
-        """Обновление выделения при перетаскивании."""
+        """
+        Продолжение выделения: обновляем конечную точку при движении мыши.
+        """
         if self._dragging:
             self._endPoint = event.locationInWindow()
             self.updateSelectionLayer()
@@ -124,7 +106,9 @@ class MouseTrackingPanel(NSPanel):
         objc.super(MouseTrackingPanel, self).mouseDragged_(event)
 
     def mouseUp_(self, event):
-        """Завершение выделения: делаем скриншот и закрываем панель."""
+        """
+        Завершение выделения: делаем скриншот и закрываем панель.
+        """
         try:
             if self._dragging:
                 self._endPoint = event.locationInWindow()
@@ -132,63 +116,51 @@ class MouseTrackingPanel(NSPanel):
                 self.updateSelectionLayer()
 
                 rect_local = self.selectionRect()
-
-                # Переводим координаты из "локальных" (в окне) в "глобальные" (экран)
                 global_rect = self.local_rect_to_global(rect_local)
 
-                # Если есть ScreenshotHandler – делаем скриншот
                 if self._screenshot_handler:
-                    self._screenshot_handler.save_screenshot(global_rect)
-
-                # --- Главное: закрыть панель и вернуть всё в исходное состояние ---
+                    pil_image = self._screenshot_handler.take_screenshot(global_rect)
+                    if pil_image:
+                        # Парсим текст через pytesseract
+                        text_result = pytesseract.image_to_string(pil_image, "rus+eng", "--psm 6")
+                        logger.info(f"Распознанный текст: {text_result}")
+                        print(">>> Parsed text:", text_result)
+                # Закрываем панель и возвращаем всё в исходное состояние
                 if self._overlay:
-                    # У Overlay уже есть метод finish_selection(),
-                    # который сделает self.panel.close() и self.panel=None.
                     self._overlay.finish_selection()
                 else:
-                    # Если по какой-то причине overlay не передан,
-                    # просто закрываем окно:
                     self.close()
 
             objc.super(MouseTrackingPanel, self).mouseUp_(event)
         except Exception as e:
-            logger.error("[mouseUp_] Exception:", e)
+            logger.error("[mouseUp_] Exception: %s", e, exc_info=True)
 
     @objc.python_method
     def local_rect_to_global(self, local_rect):
+        """
+        Переводит локальные координаты (Cocoa, с нижним левым углом)
+        в глобальные (CoreGraphics, с верхним левым углом).
+        """
         lx, ly, w, h = local_rect
-        ox, oy = self._windowOrigin  # глобальное положение окна (но тоже может быть «снизу»)
-
-        # Определяем высоту главного экрана
+        ox, oy = self._windowOrigin
         screen_height = NSScreen.mainScreen().frame().size.height
-
-        # Если ваше окно "родилось" с origin (ox, oy) в "Cocoa-координатах" (снизу),
-        # а скриншот CoreGraphics — сверху, нужно пересчитать Y.
-        #
-        # Допустим, окно на экране находится так: windowOrigin.y от нижнего края.
-        # Но CoreGraphics ждет координаты от верхнего края экрана.
-        # Тогда реальный глобальный y = (высота экрана) - (нижняя координата) - (высота лок.прямоугольника).
-        #
-        # Однако exact формула зависит от того, как ваш process_handler.get_screen_resolution() выдает (x, y).
-        # Если (0,0) от верхнего экрана — нужно проверить.
-        #
-        # Наиболее частый случай, если (ox, oy) = нижний левый угол окна (Cocoa):
         gy = screen_height - (oy + ly) - h
         gx = ox + lx
-
         return (gx, gy), (w, h)
 
     def updateSelectionLayer(self):
-        """Обновляет CAShapeLayer на основе selectionRect()."""
-        (x, y, w, h) = self.selectionRect()
+        """
+        Обновляет CAShapeLayer в соответствии с текущим прямоугольником выделения.
+        """
+        x, y, w, h = self.selectionRect()
         path = CGPathCreateMutable()
         CGPathAddRect(path, None, CGRectMake(x, y, w, h))
         self._selectionLayer.setPath_(path)
 
     def selectionRect(self):
         """
-        Возвращает (x, y, w, h) в локальных координатах окна
-        (0,0 = левый-нижний угол, как в Cocoa).
+        Возвращает текущий прямоугольник выделения в локальных координатах:
+        (x, y, width, height).
         """
         sx, sy = self._startPoint
         ex, ey = self._endPoint

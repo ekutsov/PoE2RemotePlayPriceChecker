@@ -7,7 +7,6 @@ from PyQt5.QtWidgets import QMainWindow
 from process_handler import ProcessHandler
 from key_listener import KeyListener
 from screenshot_handler import ScreenshotHandler
-from text_parser import TextParser
 
 from mouse_tracking_panel import MouseTrackingPanel
 
@@ -22,12 +21,6 @@ class Overlay(QMainWindow):
         self.screenshot_handler = ScreenshotHandler()
         self.panel = None
 
-        base_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../data")
-        )
-        config_path = os.path.join(base_dir, "itemTypes.json")
-        self.text_parser = TextParser(config_path)
-
         # Настраиваем listner клавиш (Ctrl+E)
         self.ctrl_e_listener = KeyListener(14, CG.kCGEventFlagMaskControl, self.start_selection)
         self.ctrl_e_listener.start_listener()
@@ -35,7 +28,7 @@ class Overlay(QMainWindow):
         # Настраиваем listner клавиш (ESC)
         self.esc_listener = KeyListener(53, None, self.finish_selection)
         self.esc_listener.start_listener()
-
+        
     def start_selection(self):
         """Создаёт panel (MouseTrackingPanel) при нажатии Ctrl+E."""
         if self.panel is not None:
