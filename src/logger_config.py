@@ -6,7 +6,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 # 2) Обработчик записи в файл
-file_handler = logging.FileHandler("app.log", encoding="utf-8")
+#    ВАЖНО: mode="w" перезаписывает файл при каждом новом запуске приложения
+file_handler = logging.FileHandler("app.log", mode="w", encoding="utf-8")
 file_handler.setLevel(logging.DEBUG)
 
 # 3) Формат логов

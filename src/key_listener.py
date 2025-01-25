@@ -1,4 +1,5 @@
 import Quartz.CoreGraphics as CG
+from logger_config import logger
 
 class KeyListener:
     def __init__(self, key_code, modifiers, on_key_pressed_callback):
@@ -77,4 +78,4 @@ class KeyListener:
         """
         self.key_code = key_code
         self.modifiers = modifiers
-        print(f"Комбинация клавиш обновлена: {key_code}, модификаторы: {modifiers}")
+        logger.info(f"Комбинация клавиш обновлена: {key_code}, модификаторы: {modifiers}")

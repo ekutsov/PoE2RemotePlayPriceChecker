@@ -1,6 +1,7 @@
 import Quartz.CoreGraphics as CG
 import numpy as np
 from PIL import Image
+from logger_config import logger
 
 
 class ScreenshotHandler:
@@ -32,7 +33,7 @@ class ScreenshotHandler:
                 CG.kCGWindowImageDefault
             )
             if not image_ref:
-                print("Не удалось создать CGImage (image_ref == None).")
+                logger.error("Не удалось создать CGImage (image_ref == None).")
                 return False
 
             # 4. Параметры изображения
@@ -56,7 +57,7 @@ class ScreenshotHandler:
             for row_index in range(h):
                 row_end = row_start + (w * bytes_per_pixel)
                 if row_end > total_bytes:
-                    print(f"Ошибка: не хватает данных для строки {row_index}.")
+                    logger.error(f"Ошибка: не хватает данных для строки {row_index}.")
                     return False
 
                 out[row_index, :, :] = data[row_start:row_end].reshape((1, w, 4))
@@ -66,9 +67,9 @@ class ScreenshotHandler:
             pil_image = Image.fromarray(out, "RGBA")
             pil_image.save("screenshot.png")
 
-            print(f"Скриншот успешно сохранён в 'screenshot.png'")
+            logger.info(f"Скриншот успешно сохранён.")
             return True
 
         except Exception as e:
-            print("Ошибка при сохранении скриншота:", e)
+            logger.error("Ошибка при сохранении скриншота:", e)
             return False

@@ -15,6 +15,8 @@ from Quartz import (
     CAShapeLayer
 )
 
+from logger_config import logger
+
 
 class MouseTrackingPanel(NSPanel):
     """
@@ -111,8 +113,6 @@ class MouseTrackingPanel(NSPanel):
         self._endPoint = self._startPoint
         self.updateSelectionLayer()
 
-        print(f"[mouseDown_] start = {self._startPoint}")
-
         objc.super(MouseTrackingPanel, self).mouseDown_(event)
 
     def mouseDragged_(self, event):
@@ -132,19 +132,13 @@ class MouseTrackingPanel(NSPanel):
                 self.updateSelectionLayer()
 
                 rect_local = self.selectionRect()
-                print(f"[mouseUp_] final selection rect (local): {rect_local}")
 
                 # Переводим координаты из "локальных" (в окне) в "глобальные" (экран)
                 global_rect = self.local_rect_to_global(rect_local)
-                print(f"[mouseUp_] final selection rect (global): {global_rect}")
 
                 # Если есть ScreenshotHandler – делаем скриншот
                 if self._screenshot_handler:
-                    success = self._screenshot_handler.save_screenshot(global_rect)
-                    if success:
-                        print("Скриншот сохранён.")
-                    else:
-                        print("Скриншот не удалось сохранить.")
+                    self._screenshot_handler.save_screenshot(global_rect)
 
                 # --- Главное: закрыть панель и вернуть всё в исходное состояние ---
                 if self._overlay:
@@ -158,7 +152,7 @@ class MouseTrackingPanel(NSPanel):
 
             objc.super(MouseTrackingPanel, self).mouseUp_(event)
         except Exception as e:
-            print("[mouseUp_] Exception:", e)
+            logger.error("[mouseUp_] Exception:", e)
 
     @objc.python_method
     def local_rect_to_global(self, local_rect):
