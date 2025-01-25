@@ -6,9 +6,11 @@ class KeyListener:
         Инициализация слушателя клавиш.
 
         :param key_code: Код клавиши, которая должна быть нажата (например, 14 для 'E').
-        :param modifiers: Модификаторы клавиш (например, CG.kCGEventFlagMaskControl для Ctrl).
+        :param modifiers: Модификаторы клавиш (например, CG.kCGEventFlagMaskControl для Ctrl). Если None, модификаторы не проверяются.
         :param on_key_pressed_callback: Функция обратного вызова, которая будет вызвана при нажатии клавиши.
         """
+        if not callable(on_key_pressed_callback):
+            raise ValueError("on_key_pressed_callback должен быть функцией.")
         self.key_code = key_code
         self.modifiers = modifiers
         self.on_key_pressed_callback = on_key_pressed_callback
@@ -34,9 +36,11 @@ class KeyListener:
                 pressed_key_code = CG.CGEventGetIntegerValueField(event, CG.kCGKeyboardEventKeycode)
                 pressed_modifiers = CG.CGEventGetFlags(event)
 
-                # Проверяем, совпадает ли код клавиши и модификаторы
-                if pressed_key_code == self.key_code and (pressed_modifiers & self.modifiers) == self.modifiers:
-                    self.on_key_pressed_callback()  # Вызов callback при нажатии нужной комбинации
+                # Проверяем, совпадает ли код клавиши
+                if pressed_key_code == self.key_code:
+                    # Если модификаторы заданы, проверяем их
+                    if self.modifiers is None or (pressed_modifiers & self.modifiers) == self.modifiers:
+                        self.on_key_pressed_callback()  # Вызов callback при нажатии нужной комбинации
             return event
 
         # Указываем, что нас интересуют события нажатия и отпускания клавиш
@@ -53,8 +57,7 @@ class KeyListener:
         )
 
         if not self.event_tap:
-            print("Не удалось создать обработчик событий. Проверьте разрешения.")
-            return False
+            raise RuntimeError("Не удалось создать обработчик событий. Проверьте разрешения.")
 
         # Включаем обработчик событий
         CG.CGEventTapEnable(self.event_tap, True)
@@ -63,15 +66,14 @@ class KeyListener:
         run_loop_source = CG.CFMachPortCreateRunLoopSource(None, self.event_tap, 0)
         CG.CFRunLoopAddSource(CG.CFRunLoopGetCurrent(), run_loop_source, CG.kCFRunLoopDefaultMode)
 
-        print("Глобальный слушатель клавиш запущен.")
         return True
 
-    def update_key_combination(self, key_code, modifiers):
+    def update_key_combination(self, key_code, modifiers=None):
         """
         Обновление комбинации клавиш для отслеживания.
 
         :param key_code: Новый код клавиши.
-        :param modifiers: Новые модификаторы клавиш.
+        :param modifiers: Новые модификаторы клавиш. Если None, модификаторы не проверяются.
         """
         self.key_code = key_code
         self.modifiers = modifiers
