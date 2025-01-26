@@ -67,14 +67,27 @@ class Overlay(QMainWindow):
         # Создаём TextEditorOverlay
         self.panel = TextEditorOverlay.create_panel(
             text,
-            on_save_callback=self.save_edited_text
+            on_save_callback=self.save_edited_text,
+            on_close_callback=self.close_text_editor
         )
         self.panel.makeKeyAndOrderFront_(None)
+
+    def close_text_editor(self):
+        """
+        Callback для закрытия текстового окна.
+        """
+        if self.panel:
+            self.panel.close()
+            self.panel = None
+
+        logger.info("Текстовое окно закрыто")
 
     def save_edited_text(self, edited_text):
         """
         Callback для сохранённого текста.
         """
-        print(f"Отредактированный текст: {edited_text}")
+        if self.panel:
+            self.panel.close()
+            self.panel = None
+
         logger.info(f"Отредактированный текст: {edited_text}")
-        self.finish_selection()
