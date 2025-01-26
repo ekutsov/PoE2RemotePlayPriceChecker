@@ -2,7 +2,6 @@ import sys
 from PyQt5.QtWidgets import QApplication
 from overlay import Overlay
 
-# Подключаем наш конфиг логгера
 from logger_config import logger, handle_exception
 
 def main():
@@ -15,10 +14,8 @@ def main():
     # Запускаем наше окно Overlay
     window = Overlay()
 
-    # Можно сразу что-то залогировать (пример)
     logger.info("Приложение запущено.")
 
-    # Старт цикла событий
     sys.exit(app.exec_())
 
 if __name__ == "__main__":

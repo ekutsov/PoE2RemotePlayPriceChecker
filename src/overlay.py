@@ -9,6 +9,7 @@ from key_listener import KeyListener
 from screenshot_handler import ScreenshotHandler
 
 from mouse_tracking_panel import MouseTrackingPanel
+from text_editor_overlay import TextEditorOverlay
 
 
 class Overlay(QMainWindow):
@@ -28,7 +29,7 @@ class Overlay(QMainWindow):
         # Настраиваем listner клавиш (ESC)
         self.esc_listener = KeyListener(53, None, self.finish_selection)
         self.esc_listener.start_listener()
-        
+
     def start_selection(self):
         """Создаёт panel (MouseTrackingPanel) при нажатии Ctrl+E."""
         if self.panel is not None:
@@ -47,10 +48,33 @@ class Overlay(QMainWindow):
             )
             self.panel.makeKeyAndOrderFront_(None)
 
-    def finish_selection(self):
+    def finish_selection(self, text):
         """
         Закрывает панель (если она есть) и ставит self.panel = None.
         """
         if self.panel:
             self.panel.close()
             self.panel = None
+            self.show_text_editor(text)
+
+    def show_text_editor(self, text):
+        """
+        Отображает TextEditorOverlay для редактирования текста.
+        """
+        if self.panel is not None:
+            return
+
+        # Создаём TextEditorOverlay
+        self.panel = TextEditorOverlay.create_panel(
+            text,
+            on_save_callback=self.save_edited_text
+        )
+        self.panel.makeKeyAndOrderFront_(None)
+
+    def save_edited_text(self, edited_text):
+        """
+        Callback для сохранённого текста.
+        """
+        print(f"Отредактированный текст: {edited_text}")
+        logger.info(f"Отредактированный текст: {edited_text}")
+        self.finish_selection()

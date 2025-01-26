@@ -120,20 +120,24 @@ class MouseTrackingPanel(NSPanel):
 
                 if self._screenshot_handler:
                     pil_image = self._screenshot_handler.take_screenshot(global_rect)
-                    if pil_image:
+                    if pil_image and self._overlay:
                         # Парсим текст через pytesseract
-                        text_result = pytesseract.image_to_string(pil_image, "rus+eng", "--psm 6")
-                        logger.info(f"Распознанный текст: {text_result}")
-                        print(">>> Parsed text:", text_result)
-                # Закрываем панель и возвращаем всё в исходное состояние
-                if self._overlay:
-                    self._overlay.finish_selection()
+                        parsed_text = pytesseract.image_to_string(pil_image, "rus+eng", "--psm 6")
+                        self._overlay.finish_selection(parsed_text)
                 else:
                     self.close()
 
             objc.super(MouseTrackingPanel, self).mouseUp_(event)
         except Exception as e:
             logger.error("[mouseUp_] Exception: %s", e, exc_info=True)
+
+    @objc.python_method
+    def process_parsed_text(self, text):
+        """
+        Обрабатывает распознанный текст, передавая его в Overlay для отображения.
+        """
+        if self._overlay:
+            self._overlay.show_text_editor(text)
 
     @objc.python_method
     def local_rect_to_global(self, local_rect):
