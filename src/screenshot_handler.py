@@ -78,9 +78,9 @@ class ScreenshotHandler:
             # 2) Предобработка для OCR (grayscale, контраст, фильтр, бинаризация)
             processed = ScreenshotHandler.preprocess_for_ocr(upscaled)
 
-            # (Необязательно) сохранить для отладки
-            processed.save("screenshot_processed.png")
-            logger.info("Сохранено промежуточное изображение screenshot_processed.png")
+            # # (Необязательно) сохранить для отладки
+            # processed.save("screenshot_processed.png")
+            # logger.info("Сохранено промежуточное изображение screenshot_processed.png")
 
             return processed
 

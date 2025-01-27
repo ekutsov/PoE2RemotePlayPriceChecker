@@ -3,19 +3,19 @@ from logger_config import logger
 
 
 class KeyListener:
-    def __init__(self, key_code, modifiers=None, on_key_pressed_callback=None):
+    def __init__(self, key_code, modifiers=None, callback=None):
         """
         Инициализация слушателя клавиш.
 
         :param key_code: Код клавиши (например, 14 для 'E').
         :param modifiers: Модификаторы клавиш (например, CG.kCGEventFlagMaskControl для Ctrl). Если None, модификаторы не проверяются.
-        :param on_key_pressed_callback: Callback, вызываемый при нажатии комбинации клавиш.
+        :param callback: Callback, вызываемый при нажатии комбинации клавиш.
         """
-        if not callable(on_key_pressed_callback):
-            raise ValueError("on_key_pressed_callback должен быть функцией.")
+        if not callable(callback):
+            raise ValueError("callback должен быть функцией.")
         self.key_code = key_code
         self.modifiers = modifiers
-        self.on_key_pressed_callback = on_key_pressed_callback
+        self.callback = callback
         self.event_tap = None
         self.run_loop_source = None
 
@@ -36,7 +36,7 @@ class KeyListener:
             if pressed_key_code == self.key_code:
                 if self.modifiers is None or (pressed_modifiers & self.modifiers) == self.modifiers:
                     logger.info(f"Клавиша {self.key_code} с модификаторами {self.modifiers} нажата.")
-                    self.on_key_pressed_callback()
+                    self.callback()
         return event
 
     def start_listener(self):
