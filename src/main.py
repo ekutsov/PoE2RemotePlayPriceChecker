@@ -5,6 +5,8 @@ from typing import Any
 from PyQt5.QtWidgets import QApplication
 from overlay import Overlay
 from logger_config import logger, handle_exception
+from process_handler import ProcessHandler
+from screenshot_handler import ScreenshotHandler
 
 
 def main() -> None:
@@ -13,9 +15,10 @@ def main() -> None:
     try:
         app = QApplication(sys.argv)
 
-        # Запускаем наше окно Overlay
-        window = Overlay()
-        window.show()
+        process_handler = ProcessHandler()
+        screenshot_handler = ScreenshotHandler()
+        overlay = Overlay(process_handler, screenshot_handler)
+        overlay.show()
 
         logger.info("Приложение запущено.")
 

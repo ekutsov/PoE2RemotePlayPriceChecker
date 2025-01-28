@@ -1,21 +1,22 @@
 import objc
+import json
 from AppKit import (
     NSPanel, NSColor, NSScreen, NSTextView, NSScrollView, NSButton,
     NSMakeRect, NSPoint, NSSize, NSView, NSWindowStyleMaskBorderless,
     NSWindowStyleMaskNonactivatingPanel, NSStatusWindowLevel,
     NSWindowCollectionBehaviorFullScreenAuxiliary, NSTextField, NSFont,
-    NSShadow, NSImage, NSBezierPath,
-    NSViewWidthSizable, NSViewHeightSizable, NSViewMinXMargin, NSViewMaxYMargin,
-    NSRoundedBezelStyle, NSRoundRectBezelStyle,
-    NSBezelStyleCircular
+    NSShadow, NSImage, NSBezierPath, NSLineBreakByWordWrapping,
+    NSViewWidthSizable, NSViewHeightSizable, NSViewMinXMargin, NSViewMinYMargin, NSViewMaxYMargin,
+    NSRoundedBezelStyle, NSRoundRectBezelStyle, NSCenterTextAlignment,
+    NSBezelStyleCircular, NSURL, NSImageView, NSImageScaleAxesIndependently
 )
 from Quartz import CGRectMake
+from typing import Optional, Tuple, Callable
 
 # Константы для размеров и отступов
-PANEL_WIDTH = 800
-PANEL_HEIGHT = 600
+PANEL_WIDTH = 400
+PANEL_HEIGHT = 400
 MARGIN = 10
-BUTTON_SIZE = 12  # Уменьшено до стандартного размера
 BUTTON_MARGIN = 10
 BUTTON_SIZE = (100, 30)
 BUTTON_SPACING = 10  # Расстояние между кнопками
@@ -33,15 +34,19 @@ class TextEditorOverlay(NSPanel):
     """
 
     @classmethod
-    def create_panel(cls, text: str, on_save_callback=None, on_close_callback=None) -> 'TextEditorOverlay':
+    def create_panel(cls, json_text: str, on_save_callback: Optional[Callable] = None, on_close_callback: Optional[Callable] = None) -> 'TextEditorOverlay':
         """
-        Создаёт панель TextEditorOverlay.
+        Создаёт панель TextEditorOverlay с хедером предмета.
+        Принимает JSON строку с данными предмета.
+        """
+        try:
+            item_data = json.loads(json_text)
+            item_name = item_data.get("name", "Unknown Item")
+            unique_base = item_data.get("unique", {}).get("base", "Unknown Base")
+        except json.JSONDecodeError:
+            item_name = "Invalid JSON"
+            unique_base = "Unknown Base"
 
-        :param text: Текст для редактирования.
-        :param on_save_callback: Callback для сохранения изменений.
-        :param on_close_callback: Callback для закрытия окна
-        :return: Экземпляр TextEditorOverlay.
-        """
         screen = NSScreen.mainScreen()
         screen_frame = screen.frame() if screen else CGRectMake(0, 0, PANEL_WIDTH, PANEL_HEIGHT)
 
@@ -49,7 +54,6 @@ class TextEditorOverlay(NSPanel):
         panel_y = (screen_frame.size.height - PANEL_HEIGHT) / 2
         rect = CGRectMake(panel_x, panel_y, PANEL_WIDTH, PANEL_HEIGHT)
 
-        # Создаём панель
         panel = cls.alloc().initWithContentRect_styleMask_backing_defer_(
             rect,
             NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel,
@@ -57,90 +61,140 @@ class TextEditorOverlay(NSPanel):
             False
         )
 
-        # Настройка панели
-        panel.setLevel_(NSStatusWindowLevel)
-        panel.setCollectionBehavior_(NSWindowCollectionBehaviorFullScreenAuxiliary)
-        panel.setBackgroundColor_(NSColor.clearColor())  # Используем прозрачный фон для тени
-        panel.setAlphaValue_(1.0)
-        panel.setIgnoresMouseEvents_(False)
-        panel.setAcceptsMouseMovedEvents_(True)
+        panel._setup_panel()
+        panel._initialize_ui(item_name, unique_base, json_text, on_save_callback, on_close_callback)
 
-        # Контейнер для UI с закругленными углами и фоном
-        content_view = panel.contentView()
+        return panel
 
-        # Устанавливаем слой для content_view
+    def _setup_panel(self):
+        """Настройка панели."""
+        self.setLevel_(NSStatusWindowLevel)
+        self.setCollectionBehavior_(NSWindowCollectionBehaviorFullScreenAuxiliary)
+        self.setBackgroundColor_(NSColor.clearColor())
+        self.setAlphaValue_(1.0)
+        self.setIgnoresMouseEvents_(False)
+        self.setAcceptsMouseMovedEvents_(True)
+
+        content_view = self.contentView()
         content_view.setWantsLayer_(True)
 
-        # Добавляем слой для фонового представления
         background_view = NSView.alloc().initWithFrame_(content_view.bounds())
         background_view.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
         background_view.setWantsLayer_(True)
         background_view.layer().setBackgroundColor_(NSColor.windowBackgroundColor().CGColor())
         background_view.layer().setCornerRadius_(CORNER_RADIUS)
-        background_view.layer().setMasksToBounds_(True)  # Ограничиваем дочерние представления границами слоя
+        background_view.layer().setMasksToBounds_(True)
 
-        # Добавляем тень к background_view
         shadow = NSShadow.alloc().init()
-        shadow.setShadowColor_(NSColor.colorWithCalibratedWhite_alpha_(0.0, 0.5))  # Черный цвет с 50% прозрачностью
+        shadow.setShadowColor_(NSColor.colorWithCalibratedWhite_alpha_(0.0, 0.5))
         shadow.setShadowBlurRadius_(20)
         shadow.setShadowOffset_((0, -5))
         background_view.setShadow_(shadow)
 
         content_view.addSubview_(background_view)
 
-        # Убираем добавление пользовательского заголовка
-        # cls._add_title_bar(content_view)
+    def _initialize_ui(self, item_name: str, unique_base: str, text: str, on_save_callback: Optional[Callable], on_close_callback: Optional[Callable]):
+        """Инициализация элементов интерфейса."""
+        content_view = self.contentView()
 
-        # Добавляем элементы интерфейса поверх background_view
-        text_view = cls._add_text_view(content_view, text)
-        cls._add_buttons(content_view, panel)
+        header_view = self._add_header(content_view, item_name, unique_base)
+        content_view.addSubview_(header_view)
 
-        # Привязываем callback для сохранения
-        panel._text_view = text_view
-        panel._on_save_callback = on_save_callback
-        panel._on_close_callback = on_close_callback
+        text_view = self._add_text_view(content_view, text, header_view.frame().size.height)
+        self._text_view = text_view
 
-        # Переменные для перетаскивания
-        panel._is_dragging = False
-        panel._drag_start_point = NSPoint(0, 0)
+        self._add_buttons(content_view)
 
-        panel.makeKeyAndOrderFront_(None)  # Отображаем панель
+        self._on_save_callback = on_save_callback
+        self._on_close_callback = on_close_callback
 
-        # Устанавливаем фокус на текстовом поле
-        panel.makeFirstResponder_(text_view)
+        self._is_dragging = False
+        self._drag_start_point = NSPoint(0, 0)
 
-        return panel
+        self.makeKeyAndOrderFront_(None)
+        self.makeFirstResponder_(text_view)
 
     @staticmethod
-    def _add_text_view(content_view: NSView, text: str) -> NSTextView:
-        """
-        Добавляет текстовое поле для редактирования.
-        """
+    def _add_header(content_view: NSView, item_name: str, unique_base: str) -> NSView:
+        """Добавляет хедер предмета с фоновыми изображениями и текстом."""
+        header_height = 50
+        header_view = NSView.alloc().initWithFrame_(
+            NSMakeRect(0, content_view.frame().size.height - header_height, content_view.frame().size.width, header_height))
+        header_view.setAutoresizingMask_(NSViewWidthSizable | NSViewMinYMargin)
+
+        left_image_url = NSURL.URLWithString_("https://web.poecdn.com/protected/image/item/popup2/header-double-unique-left.png?v=1732003056293&key=qrl8M2m852PSVfYgs7nT9g")
+        middle_image_url = NSURL.URLWithString_("https://web.poecdn.com/protected/image/item/popup2/header-double-unique-middle.png?v=1732003056293&key=wxQkVW4aTky07SUpkACvSA")
+        right_image_url = NSURL.URLWithString_("https://web.poecdn.com/protected/image/item/popup2/header-double-unique-right.png?v=1732003056293&key=o1T64-ZQYCasntgXT_L8SA")
+
+        left_image = NSImage.alloc().initWithContentsOfURL_(left_image_url)
+        middle_image = NSImage.alloc().initWithContentsOfURL_(middle_image_url)
+        right_image = NSImage.alloc().initWithContentsOfURL_(right_image_url)
+
+        left_image_view = NSImageView.alloc().initWithFrame_(NSMakeRect(0, 0, 46, header_height))
+        left_image_view.setImage_(left_image)
+        header_view.addSubview_(left_image_view)
+
+        middle_image_view = NSImageView.alloc().initWithFrame_(NSMakeRect(46, 0, content_view.frame().size.width - 92, header_height))
+        middle_image_view.setImageScaling_(NSImageScaleAxesIndependently)
+        middle_image_view.setImage_(middle_image)
+        header_view.addSubview_(middle_image_view)
+
+        right_image_view = NSImageView.alloc().initWithFrame_(NSMakeRect(content_view.frame().size.width - 46, 0, 46, header_height))
+        right_image_view.setImage_(right_image)
+        header_view.addSubview_(right_image_view)
+
+        text_color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.686, 0.376, 0.145, 1.0)
+
+        title_field = NSTextField.alloc().initWithFrame_(NSMakeRect(10, 25, content_view.frame().size.width - 20, 20))
+        title_field.setStringValue_(item_name)
+        title_field.setFont_(NSFont.boldSystemFontOfSize_(16))
+        title_field.setTextColor_(text_color)
+        title_field.setBackgroundColor_(NSColor.clearColor())
+        title_field.setBordered_(False)
+        title_field.setEditable_(False)
+        title_field.setSelectable_(False)
+        title_field.setAlignment_(NSCenterTextAlignment)
+        title_field.setLineBreakMode_(NSLineBreakByWordWrapping)
+        header_view.addSubview_(title_field)
+
+        base_field = NSTextField.alloc().initWithFrame_(NSMakeRect(10, 5, content_view.frame().size.width - 20, 20))
+        base_field.setStringValue_(unique_base)
+        base_field.setFont_(NSFont.boldSystemFontOfSize_(16))
+        base_field.setTextColor_(text_color)
+        base_field.setBackgroundColor_(NSColor.clearColor())
+        base_field.setBordered_(False)
+        base_field.setEditable_(False)
+        base_field.setSelectable_(False)
+        base_field.setAlignment_(NSCenterTextAlignment)
+        base_field.setLineBreakMode_(NSLineBreakByWordWrapping)
+        header_view.addSubview_(base_field)
+
+        return header_view
+
+    @staticmethod
+    def _add_text_view(content_view: NSView, text: str, header_height: float) -> NSTextView:
+        """Добавляет текстовое поле для редактирования."""
         scroll_view = NSScrollView.alloc().initWithFrame_(
             NSMakeRect(MARGIN, MARGIN + BUTTON_SIZE[1] + BUTTON_MARGIN,
-                      content_view.frame().size.width - 2 * MARGIN,
-                      content_view.frame().size.height - BUTTON_SIZE[1] - 3 * MARGIN)
+                       content_view.frame().size.width - 2 * MARGIN,
+                       content_view.frame().size.height - header_height - BUTTON_SIZE[1] - 3 * MARGIN)
         )
-        scroll_view.setBorderType_(0)  # Без рамки
+        scroll_view.setBorderType_(0)
         scroll_view.setHasVerticalScroller_(True)
         scroll_view.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
 
         text_view = NSTextView.alloc().initWithFrame_(scroll_view.bounds())
         text_view.setString_(text)
         text_view.setFont_(NSFont.systemFontOfSize_(FONT_SIZE_DEFAULT))
-        text_view.setEditable_(True)      # Делает текстовое поле редактируемым
-        text_view.setSelectable_(True)    # Разрешает выделение текста
+        text_view.setEditable_(True)
+        text_view.setSelectable_(True)
         text_view.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
         scroll_view.setDocumentView_(text_view)
         content_view.addSubview_(scroll_view)
         return text_view
 
-    @classmethod
-    def _add_buttons(cls, content_view: NSView, panel: 'TextEditorOverlay'):
-        """
-        Добавляет кнопки "Закрыть" и "Сохранить" на панель.
-        """
-        # Контейнер для кнопок
+    def _add_buttons(self, content_view: NSView):
+        """Добавляет кнопки "Закрыть" и "Сохранить" на панель."""
         buttons_container = NSView.alloc().initWithFrame_(
             NSMakeRect(content_view.frame().size.width - MARGIN - BUTTON_SIZE[0] - BUTTON_SIZE[0] - BUTTON_SPACING,
                       MARGIN,
@@ -150,7 +204,6 @@ class TextEditorOverlay(NSPanel):
         buttons_container.setAutoresizingMask_(NSViewMinXMargin | NSViewMaxYMargin)
         content_view.addSubview_(buttons_container)
 
-        # Кнопка закрытия
         close_button = NSButton.alloc().initWithFrame_(
             NSMakeRect(0, (buttons_container.frame().size.height - BUTTON_SIZE[1]) / 2,
                       BUTTON_SIZE[0], BUTTON_SIZE[1])
@@ -158,11 +211,10 @@ class TextEditorOverlay(NSPanel):
         close_button.setTitle_(CLOSE_BUTTON_TITLE)
         close_button.setBezelStyle_(NSRoundRectBezelStyle)
         close_button.setAutoresizingMask_(NSViewMinXMargin)
-        close_button.setTarget_(panel)
-        close_button.setAction_(objc.selector(panel.close_panel, signature=b'v@:@'))
+        close_button.setTarget_(self)
+        close_button.setAction_(objc.selector(self.close_panel, signature=b'v@:@'))
         buttons_container.addSubview_(close_button)
 
-        # Кнопка сохранения
         save_button = NSButton.alloc().initWithFrame_(
             NSMakeRect(BUTTON_SIZE[0] + BUTTON_SPACING, (buttons_container.frame().size.height - BUTTON_SIZE[1]) / 2,
                       BUTTON_SIZE[0], BUTTON_SIZE[1])
@@ -170,22 +222,17 @@ class TextEditorOverlay(NSPanel):
         save_button.setTitle_(SAVE_BUTTON_TITLE)
         save_button.setBezelStyle_(NSRoundRectBezelStyle)
         save_button.setAutoresizingMask_(NSViewMinXMargin)
-        save_button.setTarget_(panel)
-        save_button.setAction_(objc.selector(panel.save_text, signature=b'v@:@'))
+        save_button.setTarget_(self)
+        save_button.setAction_(objc.selector(self.save_text, signature=b'v@:@'))
         buttons_container.addSubview_(save_button)
 
     def mouseDown_(self, event):
-        """
-        Начало перетаскивания окна.
-        """
-        # Позволяем перетаскивать окно по всей области панели
+        """Начало перетаскивания окна."""
         self._is_dragging = True
         self._drag_start_point = event.locationInWindow()
 
     def mouseDragged_(self, event):
-        """
-        Перетаскивание окна.
-        """
+        """Перетаскивание окна."""
         if self._is_dragging:
             current_point = event.locationInWindow()
             dx = current_point.x - self._drag_start_point.x
@@ -196,25 +243,19 @@ class TextEditorOverlay(NSPanel):
             self.setFrameOrigin_(new_origin)
 
     def mouseUp_(self, event):
-        """
-        Завершение перетаскивания окна.
-        """
+        """Завершение перетаскивания окна."""
         self._is_dragging = False
 
     @objc.IBAction
     def save_text(self, sender):
-        """
-        Сохраняет текст из текстового поля и вызывает callback.
-        """
+        """Сохраняет текст из текстового поля и вызывает callback."""
         edited_text = self._text_view.string()
         if self._on_save_callback:
             self._on_save_callback(edited_text)
 
     @objc.IBAction
     def close_panel(self, sender):
-        """
-        Закрывает панель.
-        """
+        """Закрывает панель."""
         if self._on_close_callback:
             self._on_close_callback()
 
