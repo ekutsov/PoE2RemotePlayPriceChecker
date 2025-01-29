@@ -80,7 +80,7 @@ class Overlay(QMainWindow):
         self.panel = MouseTrackingPanel.create_panel(
             rect=rect,
             screenshot_handler=self.screenshot_handler,
-            overlay=self
+            finish_callback=self.finish_selection
         )
         self.panel.makeKeyAndOrderFront_(None)
         logger.info("Панель выбора создана и отображена.")

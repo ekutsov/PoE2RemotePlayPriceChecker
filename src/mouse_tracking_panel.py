@@ -29,13 +29,13 @@ class MouseTrackingPanel(NSPanel):
     """
 
     @classmethod
-    def create_panel(cls, rect: Tuple[Tuple[float, float], Tuple[float, float]], screenshot_handler=None, overlay=None) -> 'MouseTrackingPanel':
+    def create_panel(cls, rect: Tuple[Tuple[float, float], Tuple[float, float]], screenshot_handler=None, finish_callback=None) -> 'MouseTrackingPanel':
         """
         Создаёт и инициализирует MouseTrackingPanel в указанных координатах.
 
         :param rect: Кортеж ((x, y), (width, height)), глобальные координаты на экране.
         :param screenshot_handler: Экземпляр ScreenshotHandler для сохранения скриншота.
-        :param overlay: Ссылка на Overlay, чтобы закрыть панель вызовом overlay.finish_selection().
+        :param finish_callback: Callback overlay.finish_selection().
         :return: Экземпляр MouseTrackingPanel.
         """
         (global_x, global_y), (w, h) = rect
@@ -55,7 +55,7 @@ class MouseTrackingPanel(NSPanel):
 
         panel._initialize_content_view()
         panel._initialize_selection_layer()
-        panel._initialize_fields(screenshot_handler, overlay, (global_x, global_y))
+        panel._initialize_fields(screenshot_handler, (global_x, global_y), finish_callback)
 
         return panel
 
@@ -72,14 +72,14 @@ class MouseTrackingPanel(NSPanel):
         self.contentView().layer().addSublayer_(selection_layer)
         self._selectionLayer = selection_layer
 
-    def _initialize_fields(self, screenshot_handler, overlay, window_origin):
+    def _initialize_fields(self, screenshot_handler, window_origin, finish_callback):
         """Инициализирует внутренние поля панели."""
         self._startPoint = (0, 0)
         self._endPoint = (0, 0)
         self._dragging = False
         self._windowOrigin = window_origin
         self._screenshot_handler = screenshot_handler
-        self._overlay = overlay
+        self._finish_callback = finish_callback
 
     @staticmethod
     def canBecomeKeyWindow() -> bool:
@@ -117,9 +117,9 @@ class MouseTrackingPanel(NSPanel):
 
                 if self._screenshot_handler:
                     pil_image = self._screenshot_handler.take_screenshot(global_rect)
-                    if pil_image and self._overlay:
+                    if pil_image:
                         parsed_text = pytesseract.image_to_string(pil_image, "rus+eng", "--psm 6")
-                        self._overlay.finish_selection(parsed_text)
+                        self._finish_callback(parsed_text)
                 else:
                     self.close()
         except Exception as e:
